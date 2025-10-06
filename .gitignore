@@ -1,0 +1,11 @@
+.env
+*.pyc
+__pycache__/
+chroma_db/
+outputs/*.md
+credentials.json
+token.json
+.streamlit/
+venv/
+.venv/
+*.log
