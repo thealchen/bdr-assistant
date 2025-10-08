@@ -82,8 +82,9 @@ if st.button("🚀 Generate Outreach", type="primary", disabled=not lead_email):
             # Run workflow
             if use_galileo:
                 evaluator = GalileoEvaluator()
+                # Updated for v2.0: pass function that accepts config parameter
                 result = evaluator.run_workflow(
-                    lambda state: app.invoke(state),
+                    lambda state, config=None: app.invoke(state, config=config) if config else app.invoke(state),
                     initial_state,
                     experiment_name="streamlit_run"
                 )

@@ -59,3 +59,18 @@ def build_graph() -> StateGraph:
 
 # Create compiled graph instance
 app = build_graph()
+
+
+def invoke_with_config(state: LeadState, config: dict = None):
+    """Invoke workflow with optional config (for Galileo callbacks).
+
+    Args:
+        state: Initial workflow state
+        config: Optional config dict with callbacks for Galileo tracing
+
+    Returns:
+        Final workflow state
+    """
+    if config:
+        return app.invoke(state, config=config)
+    return app.invoke(state)

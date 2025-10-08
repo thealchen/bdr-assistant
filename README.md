@@ -30,12 +30,14 @@ cp .env.example .env
 Required variables:
 - `OPENAI_API_KEY` - OpenAI API key
 - `TAVILY_API_KEY` - Tavily search API key
-- `GALILEO_API_KEY` - Galileo evaluation API key
+- `GALILEO_API_KEY` - Galileo v2.0 evaluation API key
+- `GALILEO_PROJECT` - Galileo project name (e.g., "sdr-outreach-assistant")
 
 Optional (for full functionality):
 - `GMAIL_CREDENTIALS_PATH` - Path to Gmail API credentials
 - `LINKEDIN_EMAIL` / `LINKEDIN_PASSWORD` - LinkedIn credentials
 - `GOOGLE_SEARCH_API_KEY` - Google Custom Search API
+- `GALILEO_CONSOLE_URL` - Galileo console URL (only for custom deployments)
 
 ### Initialize Vector Store
 
@@ -93,17 +95,20 @@ result = app.invoke(state)
 print(result["email_draft"])
 ```
 
-### With Galileo Evaluation
+### With Galileo Evaluation (v2.0 SDK)
 
 ```python
 from evaluation import GalileoEvaluator
+from graph import app
 
 evaluator = GalileoEvaluator()
 result = evaluator.run_workflow(
-    lambda s: app.invoke(s),
+    lambda s, config=None: app.invoke(s, config=config) if config else app.invoke(s),
     state,
     experiment_name="test_run"
 )
+
+# View traces in Galileo Console: https://console.galileo.ai
 ```
 
 ## Evaluation
@@ -128,13 +133,13 @@ variants = {
 
 runner.run_experiment(
     "prompt_test",
-    lambda s: app.invoke(s),
+    lambda s, config=None: app.invoke(s, config=config) if config else app.invoke(s),
     test_leads,
     variants
 )
 ```
 
-View results in Galileo dashboard.
+View results in Galileo Console at https://console.galileo.ai. Each variant will have its own log stream for easy comparison.
 
 ## Project Structure
 

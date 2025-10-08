@@ -121,13 +121,11 @@ Draft the email body only (no subject line)."""
         )
 
         return {
-            "email_draft": email_draft,
-            "status": "email_drafted"
+            "email_draft": email_draft
         }
     except Exception as e:
         return {
             "email_draft": None,
-            "status": "email_error",
             "error": str(e)
         }
 
@@ -170,13 +168,11 @@ Draft the connection message only."""
         )
 
         return {
-            "linkedin_draft": linkedin_draft,
-            "status": "linkedin_drafted"
+            "linkedin_draft": linkedin_draft
         }
     except Exception as e:
         return {
             "linkedin_draft": None,
-            "status": "linkedin_error",
             "error": str(e)
         }
 
@@ -224,13 +220,11 @@ Format with sections: Opening, Discovery Questions, Positioning, Close, Objectio
             f.write(call_script)
 
         return {
-            "call_script": call_script,
-            "status": "call_script_drafted"
+            "call_script": call_script
         }
     except Exception as e:
         return {
             "call_script": None,
-            "status": "call_script_error",
             "error": str(e)
         }
 

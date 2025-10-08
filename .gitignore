@@ -3,9 +3,25 @@
 __pycache__/
 chroma_db/
 outputs/*.md
-credentials.json
-token.json
 .streamlit/
 venv/
 .venv/
 *.log
+
+# Google API Credentials (all variants)
+client_secret_*.json
+credentials.json
+token.json
+oauth2*.json
+
+# Windows metadata files
+*.Zone.Identifier
+
+# AWS Credentials (future-proofing)
+*.pem
+*.key
+*.crt
+
+# Generic secrets and credentials
+*secret*.json
+*credentials*.json
