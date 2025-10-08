@@ -17,16 +17,12 @@ st.set_page_config(
 )
 
 st.title("📧 SDR Outreach Assistant")
-st.markdown("Generate personalized outreach drafts for leads")
 
 # Sidebar configuration
 with st.sidebar:
     st.header("Configuration")
 
-    use_galileo = st.checkbox("Enable Galileo Evaluation", value=False)
-
-    if use_galileo:
-        st.info("Galileo logging enabled. Results will be tracked in your project.")
+    st.info("🔍 Galileo tracking enabled - all runs are logged")
 
     st.markdown("---")
     st.markdown("### About")
@@ -55,6 +51,8 @@ with col2:
         placeholder="Optional - defaults to email",
         help="Unique identifier for the lead"
     )
+if not lead_email:
+    st.info("👆 Enter a lead email to get started")
 
 # Generate button
 if st.button("🚀 Generate Outreach", type="primary", disabled=not lead_email):
@@ -74,22 +72,18 @@ if st.button("🚀 Generate Outreach", type="primary", disabled=not lead_email):
             "email_draft": None,
             "linkedin_draft": None,
             "call_script": None,
-            "status": "started",
+            "status": [],
             "error": None
         }
 
         try:
-            # Run workflow
-            if use_galileo:
-                evaluator = GalileoEvaluator()
-                # Updated for v2.0: pass function that accepts config parameter
-                result = evaluator.run_workflow(
-                    lambda state, config=None: app.invoke(state, config=config) if config else app.invoke(state),
-                    initial_state,
-                    experiment_name="streamlit_run"
-                )
-            else:
-                result = app.invoke(initial_state)
+            # Run workflow with Galileo tracking
+            evaluator = GalileoEvaluator()
+            result = evaluator.run_workflow(
+                lambda state, config=None: app.invoke(state, config=config) if config else app.invoke(state),
+                initial_state,
+                experiment_name="staging"
+            )
 
             # Display results
             st.success("✅ Outreach materials generated successfully!")
@@ -149,83 +143,52 @@ if st.button("🚀 Generate Outreach", type="primary", disabled=not lead_email):
             else:
                 st.warning("Call script not generated")
 
-            # Evaluation metrics (if enabled)
-            if use_galileo:
-                st.markdown("---")
-                st.subheader("📊 Quality Metrics")
+            # Evaluation metrics
+            st.markdown("---")
+            st.subheader("📊 Quality Metrics")
 
-                metrics = evaluate_workflow_output(initial_state, result)
+            metrics = evaluate_workflow_output(initial_state, result)
 
-                col1, col2, col3 = st.columns(3)
+            col1, col2, col3 = st.columns(3)
 
-                with col1:
-                    st.metric(
-                        "Email Quality",
-                        f"{metrics.get('email_quality', 0):.2f}",
-                        help="Overall email draft quality"
-                    )
-                    st.metric(
-                        "Email Personalization",
-                        f"{metrics.get('email_personalization', 0):.2f}",
-                        help="How personalized the email is"
-                    )
+            with col1:
+                st.metric(
+                    "Email Quality",
+                    f"{metrics.get('email_quality', 0):.2f}",
+                    help="Overall email draft quality"
+                )
+                st.metric(
+                    "Email Personalization",
+                    f"{metrics.get('email_personalization', 0):.2f}",
+                    help="How personalized the email is"
+                )
 
-                with col2:
-                    st.metric(
-                        "LinkedIn Quality",
-                        f"{metrics.get('linkedin_quality', 0):.2f}",
-                        help="Overall LinkedIn message quality"
-                    )
-                    st.metric(
-                        "Research Depth",
-                        f"{metrics.get('research_depth', 0):.2f}",
-                        help="Comprehensiveness of research"
-                    )
+            with col2:
+                st.metric(
+                    "LinkedIn Quality",
+                    f"{metrics.get('linkedin_quality', 0):.2f}",
+                    help="Overall LinkedIn message quality"
+                )
+                st.metric(
+                    "Research Depth",
+                    f"{metrics.get('research_depth', 0):.2f}",
+                    help="Comprehensiveness of research"
+                )
 
-                with col3:
-                    st.metric(
-                        "Call Script Quality",
-                        f"{metrics.get('call_script_quality', 0):.2f}",
-                        help="Overall call script quality"
-                    )
-                    st.metric(
-                        "Completion Rate",
-                        f"{metrics.get('completion_rate', 0):.0%}",
-                        help="Percentage of drafts completed"
-                    )
+            with col3:
+                st.metric(
+                    "Call Script Quality",
+                    f"{metrics.get('call_script_quality', 0):.2f}",
+                    help="Overall call script quality"
+                )
+                st.metric(
+                    "Completion Rate",
+                    f"{metrics.get('completion_rate', 0):.0%}",
+                    help="Percentage of drafts completed"
+                )
 
         except Exception as e:
             st.error(f"❌ Error generating outreach: {str(e)}")
             st.exception(e)
 
 # Instructions
-if not lead_email:
-    st.info("👆 Enter a lead email to get started")
-
-    with st.expander("📖 Setup Instructions"):
-        st.markdown("""
-        ### First Time Setup
-
-        1. **Install dependencies**:
-           ```bash
-           pip install -r requirements.txt
-           ```
-
-        2. **Configure environment variables**:
-           - Copy `.env.example` to `.env`
-           - Add your API keys (OpenAI, Tavily, Gmail, Galileo)
-
-        3. **Initialize vector store**:
-           - Load lead enrichment data from Apollo/reo.dev
-           - Run data loading script to populate Chroma
-
-        4. **Gmail API setup** (optional):
-           - Download credentials from Google Cloud Console
-           - Save as `credentials.json` in project root
-           - First run will prompt for authentication
-
-        5. **Run Streamlit**:
-           ```bash
-           streamlit run ui/streamlit_app.py
-           ```
-        """)

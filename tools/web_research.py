@@ -1,24 +1,41 @@
 import os
-from typing import Dict, Optional
+import json
+from typing import Dict, Optional, Type
+from pydantic import BaseModel, Field
+from langchain_core.tools import BaseTool
 from tavily import TavilyClient
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
-class WebResearchTool:
+class WebResearchInput(BaseModel):
+    """Input schema for web research tool."""
+    email: str = Field(description="Lead email address")
+    company: str = Field(default="", description="Company name")
+    title: str = Field(default="", description="Lead's job title")
+
+
+class WebResearchTool(BaseTool):
     """Performs web research on leads using Tavily and other sources."""
 
-    def __init__(self):
+    name: str = "web_research"
+    description: str = "Research a lead using web search to find company and role context. Returns research summary and sources."
+    args_schema: Type[BaseModel] = WebResearchInput
+
+    tavily: Optional[TavilyClient] = None
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         tavily_key = os.getenv("TAVILY_API_KEY")
         self.tavily = TavilyClient(api_key=tavily_key) if tavily_key else None
 
-    def research_lead(
+    def _run(
         self,
         email: str,
         company: str = "",
         title: str = ""
-    ) -> Dict:
+    ) -> str:
         """Research lead using web search.
 
         Args:
@@ -27,13 +44,14 @@ class WebResearchTool:
             title: Lead's job title
 
         Returns:
-            Dict with research results
+            JSON string with research results
         """
         if not self.tavily:
-            return {
+            result = {
                 "summary": "Web research not available - Tavily API key not configured",
                 "sources": []
             }
+            return json.dumps(result)
 
         # Build search query
         query_parts = []
@@ -65,18 +83,20 @@ class WebResearchTool:
 
             summary = " ".join(summary_parts[:500])  # Limit length
 
-            return {
+            result = {
                 "summary": summary,
                 "sources": sources,
                 "query": query
             }
+            return json.dumps(result)
 
         except Exception as e:
-            return {
+            result = {
                 "summary": f"Research failed: {str(e)}",
                 "sources": [],
                 "error": str(e)
             }
+            return json.dumps(result)
 
     def search_linkedin_profile(self, name: str, company: str) -> Optional[str]:
         """Search for LinkedIn profile (placeholder for LinkedIn API integration).

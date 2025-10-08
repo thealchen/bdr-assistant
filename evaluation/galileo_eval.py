@@ -46,19 +46,35 @@ class GalileoEvaluator:
         Returns:
             Workflow output with Galileo tracking
         """
-        # Initialize Galileo context
+        # Reset and initialize Galileo context (ensures fresh session on every run)
         log_stream = experiment_name or self.log_stream
+
+        # Force reload .env to get fresh API key (prevents Streamlit caching issues)
+        load_dotenv(override=True)
+
+        # Clear any existing session to ensure clean slate
+        try:
+            galileo_context.clear_session()
+            print("🔄 Cleared previous Galileo session")
+        except Exception as e:
+            print(f"ℹ️  No previous session to clear: {e}")
+
+        # Initialize Galileo context (reinit is safe - SDK handles if already initialized)
         galileo_context.init(
             project=self.project_name,
             log_stream=log_stream
         )
+        print(f"✓ Initialized Galileo context - Project: {self.project_name}, Log Stream: {log_stream}")
 
-        # Start session with unique identifier
+        # Start NEW session with unique identifier (timestamp ensures uniqueness)
         session_name = f"{experiment_name or 'sdr_outreach'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        external_id = input_data.get("lead_id", input_data.get("lead_email", "unknown"))
+
         galileo_context.start_session(
             name=session_name,
-            external_id=input_data.get("lead_id", input_data.get("lead_email", "unknown"))
+            external_id=external_id
         )
+        print(f"🆕 Started NEW Galileo session: '{session_name}' (External ID: {external_id})")
 
         # Create Galileo callback handler for LangGraph
         galileo_callback = GalileoAsyncCallback()
@@ -84,13 +100,22 @@ class GalileoEvaluator:
             for metric_name, metric_value in metrics.items():
                 print(f"  - {metric_name}: {metric_value:.2f}" if isinstance(metric_value, float) else f"  - {metric_name}: {metric_value}")
 
-            # Flush logs to Galileo
+            # Clear session and flush logs to Galileo
+            galileo_context.clear_session()
+            print(f"✅ Cleared Galileo session: '{session_name}'")
             galileo_context.flush()
+            print("📤 Flushed traces to Galileo")
 
             return result
 
         except Exception as e:
             print(f"❌ Error during workflow execution: {e}")
+            # Clear session even on error
+            try:
+                galileo_context.clear_session()
+                print(f"🧹 Cleared session after error")
+            except:
+                pass
             galileo_context.flush()
             raise
 

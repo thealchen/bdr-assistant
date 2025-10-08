@@ -87,7 +87,7 @@ state: LeadState = {
     "email_draft": None,
     "linkedin_draft": None,
     "call_script": None,
-    "status": "started",
+    "status": [],
     "error": None
 }
 

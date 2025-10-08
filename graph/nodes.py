@@ -1,11 +1,12 @@
 import os
+import json
 from typing import Dict
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from data import LeadVectorStore
 from tools.retriever import LeadRetriever
 from tools.web_research import WebResearchTool
-from tools.gmail_api import GmailAPI
+from tools.gmail_api import GmailAPI, GmailDraftTool
 from tools.linkedin_api import LinkedInAPI
 
 
@@ -15,6 +16,7 @@ vector_store = LeadVectorStore()
 retriever = LeadRetriever(vector_store)
 web_research = WebResearchTool()
 gmail_api = GmailAPI()
+gmail_tool = GmailDraftTool()
 linkedin_api = LinkedInAPI()
 
 
@@ -23,7 +25,9 @@ def retrieve_enrichment(state: Dict) -> Dict:
     lead_email = state["lead_email"]
 
     try:
-        results = retriever.retrieve(lead_email)
+        # Use LangChain tool's invoke method
+        result_json = retriever.invoke({"lead_identifier": lead_email, "k": 1})
+        results = json.loads(result_json)
 
         if results:
             enrichment_data = results[0]
@@ -33,19 +37,19 @@ def retrieve_enrichment(state: Dict) -> Dict:
             return {
                 "enrichment_data": enrichment_data,
                 "enrichment_sufficient": enrichment_sufficient,
-                "status": "enrichment_retrieved"
+                "status": ["enrichment_retrieved"]
             }
         else:
             return {
                 "enrichment_data": None,
                 "enrichment_sufficient": False,
-                "status": "enrichment_not_found"
+                "status": ["enrichment_not_found"]
             }
     except Exception as e:
         return {
             "enrichment_data": None,
             "enrichment_sufficient": False,
-            "status": "enrichment_error",
+            "status": ["enrichment_error"],
             "error": str(e)
         }
 
@@ -59,20 +63,22 @@ def web_research_node(state: Dict) -> Dict:
     title = enrichment_data.get("metadata", {}).get("title", "")
 
     try:
-        research_results = web_research.research_lead(
-            email=lead_email,
-            company=company,
-            title=title
-        )
+        # Use LangChain tool's invoke method
+        result_json = web_research.invoke({
+            "email": lead_email,
+            "company": company,
+            "title": title
+        })
+        research_results = json.loads(result_json)
 
         return {
             "research_results": research_results,
-            "status": "research_completed"
+            "status": ["research_completed"]
         }
     except Exception as e:
         return {
             "research_results": None,
-            "status": "research_error",
+            "status": ["research_error"],
             "error": str(e)
         }
 
@@ -111,21 +117,24 @@ Draft the email body only (no subject line)."""
 
         email_draft = response.content
 
-        # Create Gmail draft
-        gmail_api.create_draft(
-            to=lead_email,
-            subject="Improving ML model quality at {company}".format(
-                company=enrichment.get("metadata", {}).get("company", "your company")
-            ),
-            body=email_draft
+        # Create Gmail draft using LangChain tool
+        subject = "Improving ML model quality at {company}".format(
+            company=enrichment.get("metadata", {}).get("company", "your company")
         )
+        gmail_result = gmail_tool.invoke({
+            "to": lead_email,
+            "subject": subject,
+            "body": email_draft
+        })
 
         return {
-            "email_draft": email_draft
+            "email_draft": email_draft,
+            "status": ["email_drafted"]
         }
     except Exception as e:
         return {
             "email_draft": None,
+            "status": ["email_error"],
             "error": str(e)
         }
 
@@ -168,11 +177,13 @@ Draft the connection message only."""
         )
 
         return {
-            "linkedin_draft": linkedin_draft
+            "linkedin_draft": linkedin_draft,
+            "status": ["linkedin_drafted"]
         }
     except Exception as e:
         return {
             "linkedin_draft": None,
+            "status": ["linkedin_error"],
             "error": str(e)
         }
 
@@ -220,11 +231,13 @@ Format with sections: Opening, Discovery Questions, Positioning, Close, Objectio
             f.write(call_script)
 
         return {
-            "call_script": call_script
+            "call_script": call_script,
+            "status": ["call_script_drafted"]
         }
     except Exception as e:
         return {
             "call_script": None,
+            "status": ["call_script_error"],
             "error": str(e)
         }
 

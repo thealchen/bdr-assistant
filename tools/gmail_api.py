@@ -1,7 +1,10 @@
 import os
 import base64
-from typing import Optional
+import json
+from typing import Optional, Type
 from email.mime.text import MIMEText
+from pydantic import BaseModel, Field
+from langchain_core.tools import BaseTool
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -91,3 +94,52 @@ class GmailAPI:
         except Exception as e:
             print(f"Failed to create Gmail draft: {e}")
             return None
+
+
+class GmailDraftInput(BaseModel):
+    """Input schema for Gmail draft tool."""
+    to: str = Field(description="Recipient email address")
+    subject: str = Field(description="Email subject line")
+    body: str = Field(description="Email body content (plain text)")
+
+
+class GmailDraftTool(BaseTool):
+    """LangChain tool for creating Gmail draft emails."""
+
+    name: str = "gmail_draft"
+    description: str = "Create a draft email in Gmail. Returns the draft ID if successful."
+    args_schema: Type[BaseModel] = GmailDraftInput
+
+    gmail_api: Optional[GmailAPI] = None
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.gmail_api = GmailAPI()
+
+    def _run(self, to: str, subject: str, body: str) -> str:
+        """Create a draft email in Gmail.
+
+        Args:
+            to: Recipient email
+            subject: Email subject
+            body: Email body (plain text)
+
+        Returns:
+            JSON string with draft_id if successful, error otherwise
+        """
+        draft_id = self.gmail_api.create_draft(to=to, subject=subject, body=body)
+
+        if draft_id:
+            result = {
+                "success": True,
+                "draft_id": draft_id,
+                "message": f"Draft created successfully for {to}"
+            }
+        else:
+            result = {
+                "success": False,
+                "draft_id": None,
+                "message": "Failed to create Gmail draft"
+            }
+
+        return json.dumps(result)
