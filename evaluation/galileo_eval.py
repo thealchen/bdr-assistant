@@ -2,7 +2,7 @@
 import os
 from typing import Dict, Any, Optional
 from datetime import datetime
-from galileo import galileo_context
+from galileo import galileo_context, getLogger
 from galileo.handlers.langchain import GalileoAsyncCallback
 from langchain_core.runnables import RunnableConfig
 from dotenv import load_dotenv
@@ -52,19 +52,36 @@ class GalileoEvaluator:
         # Force reload .env to get fresh API key (prevents Streamlit caching issues)
         load_dotenv(override=True)
 
-        # Clear any existing session to ensure clean slate
+        # Complete reset: flush, clear session, reset trace, reinitialize
+        # This ensures no stale session or trace data from previous runs
+
+        # Step 1: Flush any pending traces
+        try:
+            galileo_context.flush()
+            print("📤 Flushed any pending traces")
+        except Exception as e:
+            print(f"ℹ️  No pending traces to flush: {e}")
+
+        # Step 2: Clear any existing session
         try:
             galileo_context.clear_session()
             print("🔄 Cleared previous Galileo session")
         except Exception as e:
             print(f"ℹ️  No previous session to clear: {e}")
 
-        # Initialize Galileo context (reinit is safe - SDK handles if already initialized)
+        # Step 3: Reset trace context to clear any stale traces
+        try:
+            galileo_context.reset_trace_context()
+            print("🔄 Reset trace context")
+        except Exception as e:
+            print(f"ℹ️  Could not reset trace context: {e}")
+
+        # Step 4: Re-initialize Galileo context
         galileo_context.init(
             project=self.project_name,
             log_stream=log_stream
         )
-        print(f"✓ Initialized Galileo context - Project: {self.project_name}, Log Stream: {log_stream}")
+        print(f"✓ Re-initialized Galileo context - Project: {self.project_name}, Log Stream: {log_stream}")
 
         # Start NEW session with unique identifier (timestamp ensures uniqueness)
         session_name = f"{experiment_name or 'sdr_outreach'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -75,9 +92,21 @@ class GalileoEvaluator:
             external_id=external_id
         )
         print(f"🆕 Started NEW Galileo session: '{session_name}' (External ID: {external_id})")
+        print(f"   📍 View in Galileo: Log Stream = '{log_stream}', Session = '{session_name}'")
 
-        # Create Galileo callback handler for LangGraph
-        galileo_callback = GalileoAsyncCallback()
+        # CRITICAL: Create a FRESH logger instance for this session
+        # Using getLogger() creates an independent logger that won't have stale session data
+        fresh_logger = getLogger(
+            project_name=self.project_name,
+            log_stream=log_stream,
+            session_name=session_name,
+            external_id=external_id
+        )
+        galileo_callback = GalileoAsyncCallback(
+            galileo_logger=fresh_logger,
+            start_new_trace=True
+        )
+        print(f"✓ Created FRESH Galileo logger and callback for session '{session_name}'")
 
         try:
             # Create RunnableConfig with Galileo callback
@@ -100,11 +129,12 @@ class GalileoEvaluator:
             for metric_name, metric_value in metrics.items():
                 print(f"  - {metric_name}: {metric_value:.2f}" if isinstance(metric_value, float) else f"  - {metric_name}: {metric_value}")
 
-            # Clear session and flush logs to Galileo
-            galileo_context.clear_session()
-            print(f"✅ Cleared Galileo session: '{session_name}'")
+            # Flush logs first, then clear session
             galileo_context.flush()
             print("📤 Flushed traces to Galileo")
+
+            galileo_context.clear_session()
+            print(f"✅ Cleared Galileo session: '{session_name}'")
 
             return result
 
