@@ -1,4 +1,4 @@
-from .graph import app, build_graph, invoke_with_config
+from .graph import app, build_graph, invoke_with_galileo
 from .state import LeadState
 from .nodes import (
     retrieve_enrichment,
@@ -11,7 +11,7 @@ from .nodes import (
 __all__ = [
     "app",
     "build_graph",
-    "invoke_with_config",
+    "invoke_with_galileo",
     "LeadState",
     "retrieve_enrichment",
     "web_research_node",

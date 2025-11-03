@@ -57,7 +57,7 @@ def retrieve_enrichment(state: Dict) -> Dict:
 def web_research_node(state: Dict) -> Dict:
     """Perform web research on the lead."""
     lead_email = state["lead_email"]
-    enrichment_data = state.get("enrichment_data", {})
+    enrichment_data = state.get("enrichment_data") or {}
 
     company = enrichment_data.get("metadata", {}).get("company", "")
     title = enrichment_data.get("metadata", {}).get("title", "")
@@ -71,13 +71,18 @@ def web_research_node(state: Dict) -> Dict:
         })
         research_results = json.loads(result_json)
 
+        # Extract personalization hooks from research
+        hooks = _extract_personalization_hooks(research_results)
+
         return {
             "research_results": research_results,
+            "personalization_hooks": hooks,
             "status": ["research_completed"]
         }
     except Exception as e:
         return {
             "research_results": None,
+            "personalization_hooks": {},
             "status": ["research_error"],
             "error": str(e)
         }
@@ -87,25 +92,52 @@ def draft_email_node(state: Dict) -> Dict:
     """Draft email outreach message."""
     enrichment = state.get("enrichment_data", {})
     research = state.get("research_results", {})
+    hooks = state.get("personalization_hooks", {})
     lead_email = state["lead_email"]
 
     context = _build_context(enrichment, research)
 
     system_prompt = """You are an expert SDR at Galileo.ai drafting personalized outreach emails.
 
-Key guidelines:
-- Keep emails concise (100-150 words)
-- Lead with value, not product pitch
-- Reference specific, relevant context about the lead
-- End with clear, low-friction CTA
-- Professional but conversational tone"""
+CRITICAL REQUIREMENTS:
+- You MUST reference at least ONE specific personalization hook in the first 2 sentences
+- DO NOT use generic statements like "I noticed your company works in AI..."
+- Connect the hook directly to how Galileo can help
 
-    user_prompt = f"""Draft an email to reach out to this lead:
+Examples of GOOD openers:
+- "Congrats on the $50M Series B announced last month! With your ML team scaling to 200+ models..."
+- "I saw you're hiring 15 ML engineers - a clear sign of AI infrastructure expansion..."
+- "Given the challenges around model drift mentioned in your recent blog post..."
+
+Examples of BAD openers:
+- "I noticed your company works in the AI space..."
+- "Your role as VP of Engineering caught my attention..."
+
+Key guidelines:
+- 100-150 words
+- Specific hook → Galileo value → Clear CTA
+- Professional but conversational"""
+
+    # Build hook section for prompt
+    hook_section = ""
+    if hooks.get("recent_event"):
+        hook_section += f"\n- Recent Event: {hooks['recent_event']}"
+    if hooks.get("pain_point"):
+        hook_section += f"\n- Pain Point: {hooks['pain_point']}"
+    if hooks.get("growth_signal"):
+        hook_section += f"\n- Growth Signal: {hooks['growth_signal']}"
+
+    if not hook_section:
+        hook_section = "\n- No specific hooks found - use company/role info from context"
+
+    user_prompt = f"""Draft an email to this lead.
+
+PERSONALIZATION HOOKS (USE AT LEAST ONE):{hook_section}
 
 Lead Context:
 {context}
 
-Company: Galileo.ai provides ML observability and evaluation platform for LLM applications.
+Galileo Value: ML observability and evaluation platform for LLM applications.
 
 Draft the email body only (no subject line)."""
 
@@ -143,24 +175,38 @@ def draft_linkedin_node(state: Dict) -> Dict:
     """Draft LinkedIn outreach message."""
     enrichment = state.get("enrichment_data", {})
     research = state.get("research_results", {})
+    hooks = state.get("personalization_hooks", {})
     lead_email = state["lead_email"]
 
     context = _build_context(enrichment, research)
 
     system_prompt = """You are an expert SDR drafting LinkedIn connection messages.
 
-Key guidelines:
-- Keep under 300 characters for initial connection request
-- Mention mutual connection or shared interest
-- Professional and friendly
-- No sales pitch in connection request"""
+REQUIREMENTS:
+- Under 300 characters
+- MUST reference ONE personalization hook
+- No sales pitch, just relevant connection reason
 
-    user_prompt = f"""Draft a LinkedIn connection request message:
+GOOD: "Congrats on the Series B! Would love to connect given your ML infrastructure challenges."
+BAD: "I see you work in AI. Let's connect!"""
 
-Lead Context:
-{context}
+    # Build hook section
+    hook_section = ""
+    if hooks.get("recent_event"):
+        hook_section += f"\n- Recent Event: {hooks['recent_event']}"
+    if hooks.get("growth_signal"):
+        hook_section += f"\n- Growth Signal: {hooks['growth_signal']}"
 
-Draft the connection message only."""
+    if not hook_section:
+        hook_section = "\n- Use company/role from context"
+
+    user_prompt = f"""Draft LinkedIn connection request.
+
+HOOKS (USE ONE):{hook_section}
+
+Context: {context}
+
+Draft connection message only (under 300 chars)."""
 
     try:
         response = llm.invoke([
@@ -244,6 +290,65 @@ Format with sections: Opening, Discovery Questions, Positioning, Close, Objectio
 
 # Helper functions
 
+def _extract_personalization_hooks(research_results: Dict) -> Dict:
+    """Extract specific personalization hooks from research.
+
+    Returns dict with:
+    - recent_event: Funding, launch, acquisition (if found)
+    - pain_point: Challenge or problem mentioned (if found)
+    - growth_signal: Hiring, expansion indicators (if found)
+    """
+    hooks = {
+        "recent_event": None,
+        "pain_point": None,
+        "growth_signal": None
+    }
+
+    if not research_results:
+        return hooks
+
+    summary = research_results.get("summary", "").lower()
+    recent_events = research_results.get("recent_events", [])
+    pain_signals = research_results.get("pain_signals", [])
+
+    # Find recent event (funding, launch, etc)
+    event_keywords = ["raised", "funding", "series", "launched", "acquired", "announced"]
+    for event_text in recent_events:
+        for keyword in event_keywords:
+            if keyword in event_text.lower():
+                # Extract sentence containing keyword
+                sentences = event_text.split(".")
+                for sent in sentences:
+                    if keyword in sent.lower():
+                        hooks["recent_event"] = sent.strip()[:150]
+                        break
+                if hooks["recent_event"]:
+                    break
+
+    # Find pain point
+    pain_keywords = ["challenge", "problem", "struggle", "difficult", "issue"]
+    for pain_text in pain_signals:
+        for keyword in pain_keywords:
+            if keyword in pain_text.lower():
+                sentences = pain_text.split(".")
+                for sent in sentences:
+                    if keyword in sent.lower():
+                        hooks["pain_point"] = sent.strip()[:150]
+                        break
+                if hooks["pain_point"]:
+                    break
+
+    # Find growth signal
+    growth_keywords = ["hiring", "expanding", "growing", "adding", "recruiting"]
+    for keyword in growth_keywords:
+        if keyword in summary:
+            # Simple extraction
+            hooks["growth_signal"] = f"Currently {keyword}"
+            break
+
+    return hooks
+
+
 def _check_enrichment_quality(enrichment_data: Dict) -> bool:
     """Check if enrichment data has sufficient detail."""
     metadata = enrichment_data.get("metadata", {})
@@ -269,6 +374,15 @@ def _build_context(enrichment: Dict, research: Dict) -> str:
         context_parts.append(f"\nEnrichment: {enrichment.get('content', '')}")
 
     if research:
-        context_parts.append(f"\nWeb Research: {research.get('summary', '')}")
+        # Show categorized research instead of just summary
+        recent = research.get("recent_events", [])
+        pain = research.get("pain_signals", [])
+
+        if recent:
+            recent_text = " ".join(recent)[:200]
+            context_parts.append(f"\nRecent Company News: {recent_text}")
+        if pain:
+            pain_text = " ".join(pain)[:200]
+            context_parts.append(f"\nIndustry Challenges: {pain_text}")
 
     return "\n".join(context_parts)

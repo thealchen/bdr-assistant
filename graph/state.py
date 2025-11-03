@@ -20,6 +20,9 @@ class LeadState(TypedDict):
     # Research results
     research_results: Optional[Dict]
 
+    # Personalization hooks extracted from research
+    personalization_hooks: Optional[Dict]
+
     # Generated outputs
     email_draft: Optional[str]
     linkedin_draft: Optional[str]

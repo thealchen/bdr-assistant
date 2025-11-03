@@ -1,5 +1,8 @@
 from typing import Literal
+from datetime import datetime
 from langgraph.graph import StateGraph, END
+from galileo import galileo_context
+from galileo.handlers.langchain import GalileoAsyncCallback
 from graph.state import LeadState
 from graph.nodes import (
     retrieve_enrichment,
@@ -61,16 +64,11 @@ def build_graph() -> StateGraph:
 app = build_graph()
 
 
-def invoke_with_config(state: LeadState, config: dict = None):
-    """Invoke workflow with optional config (for Galileo callbacks).
-
-    Args:
-        state: Initial workflow state
-        config: Optional config dict with callbacks for Galileo tracing
-
-    Returns:
-        Final workflow state
-    """
-    if config:
-        return app.invoke(state, config=config)
-    return app.invoke(state)
+def invoke_with_galileo(state: LeadState):
+    """Invoke workflow with Galileo observability."""
+    session_name = f"lead_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    galileo_context.start_session(name=session_name, external_id=state["lead_email"])
+    callback = GalileoAsyncCallback()
+    result = app.invoke(state, config={"callbacks": [callback]})
+    galileo_context.clear_session()
+    return result

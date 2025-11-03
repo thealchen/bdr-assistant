@@ -5,9 +5,9 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from graph import app
+from graph import invoke_with_galileo
 from graph.state import LeadState
-from evaluation import GalileoEvaluator, evaluate_workflow_output
+from evaluation import evaluate_workflow_output
 
 
 st.set_page_config(
@@ -69,6 +69,7 @@ if st.button("🚀 Generate Outreach", type="primary", disabled=not lead_email):
             "enrichment_data": None,
             "enrichment_sufficient": False,
             "research_results": None,
+            "personalization_hooks": None,
             "email_draft": None,
             "linkedin_draft": None,
             "call_script": None,
@@ -78,12 +79,7 @@ if st.button("🚀 Generate Outreach", type="primary", disabled=not lead_email):
 
         try:
             # Run workflow with Galileo tracking
-            evaluator = GalileoEvaluator()
-            result = evaluator.run_workflow(
-                lambda state, config=None: app.invoke(state, config=config) if config else app.invoke(state),
-                initial_state,
-                experiment_name="staging"
-            )
+            result = invoke_with_galileo(initial_state)
 
             # Display results
             st.success("✅ Outreach materials generated successfully!")
