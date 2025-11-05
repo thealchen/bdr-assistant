@@ -1,4 +1,4 @@
-from typing import TypedDict, Optional, Dict, List, Annotated
+from typing import TypedDict, Optional, Dict, List, Annotated, Literal
 from operator import add
 
 
@@ -7,11 +7,23 @@ class LeadState(TypedDict):
 
     Uses Annotated reducer for status to support parallel node execution.
     Multiple nodes can update status simultaneously - values are collected into a list.
+    
+    Supports two input formats:
+    1. Email-based: lead_email populated, input_type="email"
+    2. Name+Company: lead_name + lead_company populated, input_type="name_company"
     """
 
-    # Input
+    # Input - supports both email and name+company formats
     lead_id: str
-    lead_email: str
+    input_type: Literal["email", "name_company"]
+    original_input: str
+    
+    # Email-based input
+    lead_email: Optional[str]
+    
+    # Name+Company input  
+    lead_name: Optional[str]
+    lead_company: Optional[str]
 
     # Enrichment data
     enrichment_data: Optional[Dict]

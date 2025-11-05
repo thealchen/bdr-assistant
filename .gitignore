@@ -1,27 +1,98 @@
+# Environment Variables
 .env
-*.pyc
-__pycache__/
-chroma_db/
-outputs/*.md
-.streamlit/
-venv/
-.venv/
-*.log
+.env.local
+.env.*.local
 
-# Google API Credentials (all variants)
-client_secret_*.json
+# Credentials & Secrets (all variants)
 credentials.json
+*credentials*.json
 token.json
+*token*.json
 oauth2*.json
+client_secret_*.json
+*secret*.json
+*secret*.env
+*secret*.yaml
 
-# Windows metadata files
-*.Zone.Identifier
-
-# AWS Credentials (future-proofing)
+# AWS/Security
+.aws/
 *.pem
 *.key
 *.crt
 
-# Generic secrets and credentials
-*secret*.json
-*credentials*.json
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Testing & Debugging
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+*.log
+
+# IDE & Editors
+.vscode/
+*.code-workspace
+.idea/
+*.iml
+*.iws
+*.ipr
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+
+# OS Files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*.Zone.Identifier
+.directory
+
+# Streamlit
+.streamlit/
+
+# Data & Databases
+chroma_db/
+*.db
+*.sqlite
+*.sqlite3
+*.pkl
+*.pickle
+
+# Generated Outputs
+outputs/*.md
+
+# Temporary Files
+*.tmp
+*.temp
+=1.24.0
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Claude CLI
+.claude/

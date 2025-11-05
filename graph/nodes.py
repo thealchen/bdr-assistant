@@ -8,6 +8,7 @@ from tools.retriever import LeadRetriever
 from tools.web_research import WebResearchTool
 from tools.gmail_api import GmailAPI, GmailDraftTool
 from tools.linkedin_api import LinkedInAPI
+from tools.protect import validate_draft_output
 
 
 # Initialize components
@@ -22,7 +23,25 @@ linkedin_api = LinkedInAPI()
 
 def retrieve_enrichment(state: Dict) -> Dict:
     """Retrieve lead enrichment data from vector store."""
+    input_type = state["input_type"]
+    
+    # For name+company inputs, skip vector store and go directly to web research
+    if input_type == "name_company":
+        return {
+            "enrichment_data": None,
+            "enrichment_sufficient": False,
+            "status": ["enrichment_skipped_name_company"]
+        }
+    
+    # For email inputs, use existing vector store lookup
     lead_email = state["lead_email"]
+    if not lead_email:
+        return {
+            "enrichment_data": None,
+            "enrichment_sufficient": False,
+            "status": ["enrichment_error"],
+            "error": "No email provided for email-based lookup"
+        }
 
     try:
         # Use LangChain tool's invoke method
@@ -56,23 +75,52 @@ def retrieve_enrichment(state: Dict) -> Dict:
 
 def web_research_node(state: Dict) -> Dict:
     """Perform web research on the lead."""
-    lead_email = state["lead_email"]
+    input_type = state["input_type"]
     enrichment_data = state.get("enrichment_data") or {}
-
-    company = enrichment_data.get("metadata", {}).get("company", "")
-    title = enrichment_data.get("metadata", {}).get("title", "")
+    
+    # Determine research parameters based on input type
+    if input_type == "email":
+        # Email-based research - use email + enrichment metadata
+        lead_email = state["lead_email"]
+        company = enrichment_data.get("metadata", {}).get("company", "")
+        title = enrichment_data.get("metadata", {}).get("title", "")
+        
+        # Append "company" to avoid ambiguous searches (e.g., "Visa" vs "visa immigration")
+        company_search = f"{company} company" if company else ""
+        
+        research_params = {
+            "email": lead_email,
+            "company": company_search,
+            "title": title
+        }
+    else:
+        # Name+company research - use name and company directly
+        lead_name = state["lead_name"]
+        lead_company = state["lead_company"]
+        
+        # Create a placeholder email for the tool (required parameter)
+        placeholder_email = f"{lead_name.lower().replace(' ', '.')}@{lead_company.lower().replace(' ', '')}.com"
+        
+        # Append "company" to avoid ambiguous searches
+        company_search = f"{lead_company} company" if lead_company else ""
+        
+        research_params = {
+            "email": placeholder_email,
+            "company": company_search,
+            "title": ""  # We don't have title for name+company inputs
+        }
 
     try:
+        print(f"🔍 Web research for: {research_params.get('company', 'Unknown')} ({research_params.get('title', 'Unknown')})")
+        
         # Use LangChain tool's invoke method
-        result_json = web_research.invoke({
-            "email": lead_email,
-            "company": company,
-            "title": title
-        })
+        result_json = web_research.invoke(research_params)
         research_results = json.loads(result_json)
-
+        
         # Extract personalization hooks from research
         hooks = _extract_personalization_hooks(research_results)
+        
+        print(f"🎯 Hooks extracted: {len([h for h in hooks.values() if h])} of 3 types")
 
         return {
             "research_results": research_results,
@@ -93,7 +141,16 @@ def draft_email_node(state: Dict) -> Dict:
     enrichment = state.get("enrichment_data", {})
     research = state.get("research_results", {})
     hooks = state.get("personalization_hooks", {})
-    lead_email = state["lead_email"]
+    input_type = state["input_type"]
+    
+    # Get email or generate placeholder for name+company inputs
+    if input_type == "email":
+        recipient_email = state["lead_email"]
+    else:
+        # For name+company, we need an email for Gmail - use placeholder
+        lead_name = state["lead_name"]
+        lead_company = state["lead_company"]
+        recipient_email = f"{lead_name.lower().replace(' ', '.')}@{lead_company.lower().replace(' ', '')}.com"
 
     context = _build_context(enrichment, research)
 
@@ -137,9 +194,9 @@ PERSONALIZATION HOOKS (USE AT LEAST ONE):{hook_section}
 Lead Context:
 {context}
 
-Galileo Value: ML observability and evaluation platform for LLM applications.
+    Galileo Value: ML observability and evaluation platform for LLM applications.
 
-Draft the email body only (no subject line)."""
+    Draft the email body only (no subject line)."""
 
     try:
         response = llm.invoke([
@@ -149,12 +206,40 @@ Draft the email body only (no subject line)."""
 
         email_draft = response.content
 
-        # Create Gmail draft using LangChain tool
-        subject = "Improving ML model quality at {company}".format(
-            company=enrichment.get("metadata", {}).get("company", "your company")
+        # Validate with Galileo Protect guardrails
+        print(f"🛡️  Validating email draft with Protect guardrails...")
+        validation = validate_draft_output(
+            draft_text=email_draft,
+            draft_type='email',
+            user_input=context,
+            strict_mode=True
         )
-        gmail_result = gmail_tool.invoke({
-            "to": lead_email,
+
+        if not validation['safe']:
+            # Email blocked by guardrails
+            violation_types = [v['metric'] for v in validation['violations']]
+            print(f"🚨 Email blocked by Protect: {violation_types}")
+            return {
+                "email_draft": validation['filtered_text'],  # Blocked message
+                "status": ["email_blocked_by_protect"],
+                "error": f"Guardrails triggered: {', '.join(violation_types)}"
+            }
+
+        # Email passed guardrails, use validated content
+        email_draft = validation['filtered_text']
+        print(f"✅ Email passed Protect validation")
+
+        # Create Gmail draft using LangChain tool
+        # Get company name based on input type
+        if input_type == "email":
+            company_name = enrichment.get("metadata", {}).get("company", "your company")
+        else:
+            company_name = state["lead_company"]
+
+        subject = f"Improving ML model quality at {company_name}"
+        # Create Gmail draft - result not used but draft is created
+        gmail_tool.invoke({
+            "to": recipient_email,
             "subject": subject,
             "body": email_draft
         })
@@ -176,7 +261,16 @@ def draft_linkedin_node(state: Dict) -> Dict:
     enrichment = state.get("enrichment_data", {})
     research = state.get("research_results", {})
     hooks = state.get("personalization_hooks", {})
-    lead_email = state["lead_email"]
+    input_type = state["input_type"]
+    
+    # Get identifier based on input type
+    if input_type == "email":
+        recipient_email = state["lead_email"]
+    else:
+        # For name+company, use placeholder email
+        lead_name = state["lead_name"]
+        lead_company = state["lead_company"]
+        recipient_email = f"{lead_name.lower().replace(' ', '.')}@{lead_company.lower().replace(' ', '')}.com"
 
     context = _build_context(enrichment, research)
 
@@ -216,9 +310,32 @@ Draft connection message only (under 300 chars)."""
 
         linkedin_draft = response.content
 
+        # Validate with Galileo Protect guardrails
+        print(f"🛡️  Validating LinkedIn draft with Protect guardrails...")
+        validation = validate_draft_output(
+            draft_text=linkedin_draft,
+            draft_type='linkedin',
+            user_input=context,
+            strict_mode=True
+        )
+
+        if not validation['safe']:
+            # LinkedIn message blocked by guardrails
+            violation_types = [v['metric'] for v in validation['violations']]
+            print(f"🚨 LinkedIn message blocked by Protect: {violation_types}")
+            return {
+                "linkedin_draft": validation['filtered_text'],  # Blocked message
+                "status": ["linkedin_blocked_by_protect"],
+                "error": f"Guardrails triggered: {', '.join(violation_types)}"
+            }
+
+        # LinkedIn message passed guardrails, use validated content
+        linkedin_draft = validation['filtered_text']
+        print(f"✅ LinkedIn message passed Protect validation")
+
         # Note: LinkedIn API integration would post this as draft/scheduled message
         linkedin_api.create_message_draft(
-            recipient_email=lead_email,
+            recipient_email=recipient_email,
             message=linkedin_draft
         )
 
@@ -238,7 +355,6 @@ def draft_call_script_node(state: Dict) -> Dict:
     """Draft call script as markdown file."""
     enrichment = state.get("enrichment_data", {})
     research = state.get("research_results", {})
-    lead_email = state["lead_email"]
     lead_id = state["lead_id"]
 
     context = _build_context(enrichment, research)
@@ -311,8 +427,14 @@ def _extract_personalization_hooks(research_results: Dict) -> Dict:
     recent_events = research_results.get("recent_events", [])
     pain_signals = research_results.get("pain_signals", [])
 
+    # Enhanced event keywords for fintech/tech companies
+    event_keywords = [
+        "raised", "funding", "series", "launched", "acquired", "announced", 
+        "partnership", "merger", "ipo", "investment", "venture", "round",
+        "expansion", "opens", "debuts", "unveils", "introduces", "releases"
+    ]
+    
     # Find recent event (funding, launch, etc)
-    event_keywords = ["raised", "funding", "series", "launched", "acquired", "announced"]
     for event_text in recent_events:
         for keyword in event_keywords:
             if keyword in event_text.lower():
@@ -324,9 +446,17 @@ def _extract_personalization_hooks(research_results: Dict) -> Dict:
                         break
                 if hooks["recent_event"]:
                     break
+        if hooks["recent_event"]:
+            break
 
+    # Enhanced pain keywords for financial/tech sectors
+    pain_keywords = [
+        "challenge", "problem", "struggle", "difficult", "issue", "concern",
+        "risk", "threat", "vulnerability", "compliance", "regulation", 
+        "security", "fraud", "cybersecurity", "data breach", "outage"
+    ]
+    
     # Find pain point
-    pain_keywords = ["challenge", "problem", "struggle", "difficult", "issue"]
     for pain_text in pain_signals:
         for keyword in pain_keywords:
             if keyword in pain_text.lower():
@@ -337,15 +467,33 @@ def _extract_personalization_hooks(research_results: Dict) -> Dict:
                         break
                 if hooks["pain_point"]:
                     break
+        if hooks["pain_point"]:
+            break
 
+    # Enhanced growth keywords
+    growth_keywords = [
+        "hiring", "expanding", "growing", "adding", "recruiting", "scaling",
+        "building", "team", "talent", "headcount", "positions", "jobs",
+        "opening", "opportunities", "careers"
+    ]
+    
     # Find growth signal
-    growth_keywords = ["hiring", "expanding", "growing", "adding", "recruiting"]
     for keyword in growth_keywords:
         if keyword in summary:
-            # Simple extraction
             hooks["growth_signal"] = f"Currently {keyword}"
             break
 
+    # Fallback: extract from summary if no specific hooks found
+    if not any(hooks.values()) and summary:
+        # Look for any interesting content in first 200 chars of summary
+        if len(summary) > 50:
+            # Try to find company-specific information
+            sentences = summary.split(".")
+            for sent in sentences[:3]:  # First 3 sentences
+                sent = sent.strip()
+                if len(sent) > 30 and any(word in sent.lower() for word in ["ai", "artificial intelligence", "machine learning", "technology", "digital", "innovation"]):
+                    hooks["pain_point"] = f"Focus on {sent[:120]}..."
+                    break
     return hooks
 
 

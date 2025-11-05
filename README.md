@@ -70,76 +70,7 @@ vector_store.add_leads(leads)
 streamlit run ui/streamlit_app.py
 ```
 
-Enter lead email and generate outreach materials.
-
-### Run Programmatically
-
-```python
-from graph import app
-from graph.state import LeadState
-
-state: LeadState = {
-    "lead_id": "123",
-    "lead_email": "john@acme.com",
-    "enrichment_data": None,
-    "enrichment_sufficient": False,
-    "research_results": None,
-    "email_draft": None,
-    "linkedin_draft": None,
-    "call_script": None,
-    "status": [],
-    "error": None
-}
-
-result = app.invoke(state)
-print(result["email_draft"])
-```
-
-### With Galileo Evaluation (v2.0 SDK)
-
-```python
-from evaluation import GalileoEvaluator
-from graph import app
-
-evaluator = GalileoEvaluator()
-result = evaluator.run_workflow(
-    lambda s, config=None: app.invoke(s, config=config) if config else app.invoke(s),
-    state,
-    experiment_name="test_run"
-)
-
-# View traces in Galileo Console: https://console.galileo.ai
-```
-
-## Evaluation
-
-### Run Experiments
-
-```python
-from evaluation import ExperimentRunner, GalileoEvaluator
-
-evaluator = GalileoEvaluator()
-runner = ExperimentRunner(evaluator)
-
-test_leads = [
-    {"lead_id": "1", "lead_email": "test1@example.com"},
-    {"lead_id": "2", "lead_email": "test2@example.com"}
-]
-
-variants = {
-    "control": {},
-    "variant_a": {}  # Different prompt config
-}
-
-runner.run_experiment(
-    "prompt_test",
-    lambda s, config=None: app.invoke(s, config=config) if config else app.invoke(s),
-    test_leads,
-    variants
-)
-```
-
-View results in Galileo Console at https://console.galileo.ai. Each variant will have its own log stream for easy comparison.
+Enter lead email or [NAME - COMPANY] and generate outreach materials.
 
 ## Project Structure
 

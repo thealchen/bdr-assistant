@@ -1,8 +1,10 @@
+import os
 from typing import Literal
 from datetime import datetime
 from langgraph.graph import StateGraph, END
 from galileo import galileo_context
 from galileo.handlers.langchain import GalileoAsyncCallback
+from dotenv import load_dotenv
 from graph.state import LeadState
 from graph.nodes import (
     retrieve_enrichment,
@@ -12,11 +14,17 @@ from graph.nodes import (
     draft_call_script_node
 )
 
+load_dotenv()
+galileo_context.init(project=os.getenv("GALILEO_PROJECT", "sdr-outreach-assistant"))
+
 
 def should_do_research(state: LeadState) -> Literal["research", "draft"]:
-    """Determine if additional web research is needed."""
-    if state.get("enrichment_sufficient", False):
-        return "draft"
+    """Determine if web research is needed.
+    
+    Always do web research to get fresh personalization hooks,
+    even when vector store enrichment is available.
+    """
+    # Always do research to get fresh personalization hooks
     return "research"
 
 
@@ -66,9 +74,7 @@ app = build_graph()
 
 def invoke_with_galileo(state: LeadState):
     """Invoke workflow with Galileo observability."""
-    session_name = f"lead_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    galileo_context.start_session(name=session_name, external_id=state["lead_email"])
-    callback = GalileoAsyncCallback()
-    result = app.invoke(state, config={"callbacks": [callback]})
+    galileo_context.start_session(name=f"lead_{datetime.now().strftime('%Y%m%d_%H%M%S')}", external_id=state["lead_email"])
+    result = app.invoke(state, config={"callbacks": [GalileoAsyncCallback()]})
     galileo_context.clear_session()
     return result
