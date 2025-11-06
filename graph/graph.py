@@ -71,7 +71,10 @@ def build_graph() -> StateGraph:
 # Create compiled graph instance
 app = build_graph()
 
+# Invoke with regular Langgraph
+# result = app.invoke(state)
 
+# Invoke with Galileo
 def invoke_with_galileo(state: LeadState):
     """Invoke workflow with Galileo observability."""
     galileo_context.start_session(name=f"lead_{datetime.now().strftime('%Y%m%d_%H%M%S')}", external_id=state["lead_email"])
